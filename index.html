@@ -59,7 +59,18 @@ a{color:var(--main)}
   <section class="panel" id="p1">
     <div>
       <label for="nama">Nama</label>
-      <input id="nama" autocomplete="name" placeholder="Nama lengkap" required>
+      <select id="nama" required>
+        <option value="">Pilih nama</option>
+        <option>Andika Roni Saputra</option>
+        <option>Wendy Kurniawan</option>
+      </select>
+
+      <label for="jabatan">Jabatan</label>
+      <select id="jabatan" required>
+        <option value="">Pilih jabatan</option>
+        <option>Supervisor HRD</option>
+        <option>Purchasing</option>
+      </select>
 
       <label id="jl">Jenis absensi</label>
       <div class="types" role="radiogroup" aria-labelledby="jl">
@@ -88,6 +99,8 @@ a{color:var(--main)}
         <button type="button" class="alt" id="btnCam">Buka kamera</button>
       </div>
 
+      <p class="devinfo" id="koneksi" role="status">Memeriksa koneksi ke spreadsheet…</p>
+
       <button class="send" id="kirim">Kirim absensi</button>
       <div class="msg" id="msg" role="status"></div>
     </div>
@@ -97,7 +110,7 @@ a{color:var(--main)}
 
 <script>
 // Tempel URL Web App dari Google Apps Script di sini (lihat petunjuk)
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxy2aC7lYYYBbvoqpy9p4Hjlqg6zG8FYWNDE7oCBq0lQMkV70U8L052fyFbUq32ySvs2A/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzLzQFfsWHV8pkK5DtQ5iJmEBtjWnc0Z6SJIWnp1PqbF-LU4Kt0XaKqk2FyLZNLOfhF/exec";
 
 const $ = id => document.getElementById(id);
 const hari = new Date().toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
@@ -113,21 +126,35 @@ function show(text,type){const m=$("msg");m.textContent=text;m.className="msg "+
 
 $("kirim").onclick = async () => {
   const nama = $("nama").value.trim();
+  const jabatan = $("jabatan").value.trim();
   const jenis = document.querySelector('input[name=jenis]:checked').value;
-  if(!nama){ show("Isi nama dulu.","err"); $("nama").focus(); return; }
+  if(!nama){ show("Pilih nama dulu.","err"); $("nama").focus(); return; }
+  if(!jabatan){ show("Pilih jabatan dulu.","err"); $("jabatan").focus(); return; }
   if(SCRIPT_URL.startsWith("GANTI")){ show("URL Google Apps Script belum diisi di file index.html.","err"); return; }
   if(!foto){ show("Ambil foto selfie dulu sebelum mengirim.","err"); return; }
   if(!lokasi){ show("Lokasi belum terdeteksi. Izinkan akses lokasi lalu tekan Coba lagi.","err"); return; }
   const dev = await infoDevice();
-  const data = { nama, jenis, foto, device:dev, lat:lokasi.lat, lng:lokasi.lng, akurasi:lokasi.akurasi, alasan: jenis==="Izin" ? $("alasan").value : "", keterangan: jenis==="Izin" ? $("ket").value.trim() : "" };
+  const data = { nama, jabatan, jenis, foto, device:dev, lat:lokasi.lat, lng:lokasi.lng, akurasi:lokasi.akurasi, alasan: jenis==="Izin" ? $("alasan").value : "", keterangan: jenis==="Izin" ? $("ket").value.trim() : "" };
   const btn=$("kirim"); btn.disabled=true; btn.textContent="Mengirim…";
   try{
-    await fetch(SCRIPT_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(data)});
+    const res = await fetch(SCRIPT_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(data)});
+    const hasil = (await res.text()).trim();
+    if(hasil!=="OK") throw new Error(hasil.slice(0,160)||"Tidak ada jawaban dari server");
     show("Absensi terkirim atas nama "+nama+".","ok");
     $("ket").value=""; foto=null; $("prev").hidden=true; $("btnCam").textContent="Buka kamera";
-  }catch(e){ show("Gagal mengirim. Periksa koneksi internet lalu coba lagi.","err"); }
+  }catch(e){ show("Gagal tersimpan ke spreadsheet: "+(e.message||e)+". Periksa URL Apps Script, akses \"Anyone\", dan deploy terbaru.","err"); }
   btn.disabled=false; btn.textContent="Kirim absensi";
 };
+
+// Cek koneksi ke Apps Script dan spreadsheet saat halaman dibuka
+(async function cekKoneksi(){
+  const el=$("koneksi");
+  if(SCRIPT_URL.startsWith("GANTI")){ el.textContent="✗ URL Apps Script belum diisi di index.html (baris SCRIPT_URL)."; return; }
+  try{
+    const t=(await (await fetch(SCRIPT_URL)).text()).trim();
+    el.textContent = t.startsWith("Absensi aktif") ? "✓ Terhubung ke spreadsheet." : "✗ Apps Script menjawab: "+t.slice(0,160);
+  }catch(e){ el.textContent="✗ Tidak bisa terhubung ke Apps Script. Periksa URL (berakhiran /exec) dan akses \"Anyone\"."; }
+})();
 
 // Deteksi jenis perangkat yang dipakai
 async function infoDevice(){
